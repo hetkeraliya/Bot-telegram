@@ -1,5 +1,8 @@
 # lang: python | file: tg_osint_bot.py
 import os
+import asyncio
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import requests
 import time
 from telegram import Update
@@ -42,8 +45,8 @@ def fmt(data: dict | None, tg_id: str) -> str:
     if not data:
         return f"✗ No result for `{tg_id}` — unlinked or invalid."
     return "\n".join([
-        f"🔍 *Telegram OSINT Result*",
-        f"",
+        "🔍 *Telegram OSINT Result*",
+        "",
         f"• *TG ID:* `{data.get('tg_id', tg_id)}`",
         f"• *Mobile:* `{data.get('mobile', 'N/A')}`",
         f"• *Country Code:* `{data.get('country_code', 'N/A')}`",
@@ -71,12 +74,40 @@ async def handle(update: Update, ctx: ContextTypes.DEFAULT_TYPE) -> None:
     await msg.edit_text(fmt(result, text), parse_mode="Markdown")
 
 
-def main() -> None:
+class Health(BaseHTTPRequestHandler):
+    def do_GET(self):           # noqa: N802
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"ok")
+
+    def log_message(self, *args):
+        pass
+
+
+def run_health(port: int = 8080) -> None:
+    HTTPServer(("0.0.0.0", port), Health).serve_forever()
+
+
+async def bot_main() -> None:
     app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle))
     print("bot polling…")
-    app.run_polling()
+    async with app:
+        await app.start()
+        await app.updater.start_polling()
+        # run forever until killed
+        await asyncio.Event().wait()
+
+
+def main() -> None:
+    # health thread
+    t = threading.Thread(target=run_health, daemon=True)
+    t.start()
+    print("health server up on :8080")
+
+    # explicit event loop — fixes Python 3.14 regression
+    asyncio.run(bot_main())
 
 
 if __name__ == "__main__":
