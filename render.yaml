@@ -1,0 +1,9 @@
+services:
+  - type: worker
+    name: tg-osint-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python tg_osint_bot.py
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
